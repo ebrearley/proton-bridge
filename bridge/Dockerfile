@@ -52,6 +52,8 @@ RUN chmod +x /opt/proton-bridge/entrypoint.sh \
 
 ENV BRIDGE_DEB_VERSION=${BRIDGE_DEB_VERSION}
 ENV BRIDGE_HOME=/data
+ENV BRIDGE_BIN=/usr/lib/protonmail/bridge/bridge
+ENV BRIDGE_ARGS=--noninteractive
 ENV BRIDGE_CONTROL_HOST=0.0.0.0
 ENV BRIDGE_CONTROL_PORT=8081
 
