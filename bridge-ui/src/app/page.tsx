@@ -1,7 +1,9 @@
+import Link from "next/link";
 import { AlertCircle, CheckCircle2, Server, Terminal } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardAction,
@@ -176,13 +178,19 @@ export default async function Home() {
               />
             </CardAction>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-              After Task 7 is implemented, use the browser terminal to complete
-              the first Bridge login and account setup flow. This dashboard will
-              continue to show process status and local mail client connection
-              settings without displaying or requesting secrets.
+              Use the browser terminal to complete the first Bridge login and
+              account setup flow. This dashboard will continue to show process
+              status and local mail client connection settings without displaying
+              or requesting secrets.
             </p>
+            <Button asChild className="self-start">
+              <Link href="/terminal">
+                <Terminal aria-hidden="true" />
+                Open terminal
+              </Link>
+            </Button>
           </CardContent>
         </Card>
       </div>

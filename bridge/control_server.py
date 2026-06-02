@@ -1,22 +1,29 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import os
+import pty
 import signal
 import subprocess
+import select
+import shlex
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 
 BRIDGE_BIN = os.environ.get("BRIDGE_BIN", "protonmail-bridge")
 BRIDGE_ARGS = os.environ.get("BRIDGE_ARGS", "--no-window").split()
+BRIDGE_CLI_BIN = os.environ.get("BRIDGE_CLI_BIN", BRIDGE_BIN)
+BRIDGE_CLI_ARGS = shlex.split(os.environ.get("BRIDGE_CLI_ARGS", "-c"))
 CONTROL_HOST = os.environ.get("BRIDGE_CONTROL_HOST", "0.0.0.0")
 CONTROL_PORT = int(os.environ.get("BRIDGE_CONTROL_PORT", "8081"))
 
 bridge_process: subprocess.Popen[bytes] | None = None
+terminal_lock = asyncio.Lock()
 
 
 class Status(BaseModel):
@@ -40,6 +47,10 @@ def bridge_version() -> str:
     return result.stdout.strip() or "unknown"
 
 
+def bridge_cli_command() -> list[str]:
+    return [BRIDGE_CLI_BIN, *BRIDGE_CLI_ARGS]
+
+
 def start_bridge() -> None:
     global bridge_process
     if bridge_process and bridge_process.poll() is None:
@@ -57,6 +68,64 @@ def stop_bridge() -> None:
     except subprocess.TimeoutExpired:
         bridge_process.kill()
         bridge_process.wait(timeout=10)
+
+
+def read_pty(master_fd: int) -> bytes:
+    ready, _, _ = select.select([master_fd], [], [], 0.1)
+    if not ready:
+        return b""
+    try:
+        return os.read(master_fd, 4096)
+    except OSError as exc:
+        if exc.errno == errno.EIO:
+            return b""
+        raise
+
+
+async def pty_to_websocket(master_fd: int, websocket: WebSocket) -> None:
+    while True:
+        data = await asyncio.to_thread(read_pty, master_fd)
+        if not data:
+            await asyncio.sleep(0.01)
+            continue
+        await websocket.send_bytes(data)
+
+
+async def websocket_to_pty(master_fd: int, websocket: WebSocket) -> None:
+    while True:
+        message = await websocket.receive()
+        message_type = message.get("type")
+        if message_type == "websocket.disconnect":
+            raise WebSocketDisconnect()
+        if text := message.get("text"):
+            os.write(master_fd, text.encode())
+        if data := message.get("bytes"):
+            os.write(master_fd, data)
+
+
+def spawn_bridge_cli() -> tuple[int, int]:
+    command = bridge_cli_command()
+    pid, master_fd = pty.fork()
+    if pid == 0:
+        os.execvp(command[0], command)
+    return pid, master_fd
+
+
+def terminate_pty_child(pid: int) -> None:
+    try:
+        waited_pid, _ = os.waitpid(pid, os.WNOHANG)
+    except ChildProcessError:
+        return
+    if waited_pid:
+        return
+    try:
+        os.kill(pid, signal.SIGHUP)
+    except ProcessLookupError:
+        return
+    try:
+        os.waitpid(pid, 0)
+    except ChildProcessError:
+        return
 
 
 @asynccontextmanager
@@ -87,6 +156,41 @@ async def restart() -> Status:
     await asyncio.sleep(1)
     start_bridge()
     return await status()
+
+
+@app.websocket("/api/terminal")
+async def terminal(websocket: WebSocket) -> None:
+    await websocket.accept()
+    if terminal_lock.locked():
+        await websocket.send_text("Another terminal session is already active.\r\n")
+        await websocket.close(code=1013)
+        return
+
+    async with terminal_lock:
+        await asyncio.to_thread(stop_bridge)
+        pid, master_fd = await asyncio.to_thread(spawn_bridge_cli)
+        wait_task = asyncio.create_task(asyncio.to_thread(os.waitpid, pid, 0))
+        output_task = asyncio.create_task(pty_to_websocket(master_fd, websocket))
+        input_task = asyncio.create_task(websocket_to_pty(master_fd, websocket))
+
+        try:
+            done, pending = await asyncio.wait(
+                {wait_task, output_task, input_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+            await asyncio.gather(*done, return_exceptions=True)
+        finally:
+            try:
+                os.close(master_fd)
+            except OSError:
+                pass
+            await asyncio.to_thread(terminate_pty_child, pid)
+            await asyncio.to_thread(start_bridge)
+            if websocket.client_state.name != "DISCONNECTED":
+                await websocket.close()
 
 
 if __name__ == "__main__":
