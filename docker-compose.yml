@@ -1,0 +1,20 @@
+services:
+  protonmail-bridge:
+    container_name: protonmail-bridge
+    image: shenxn/protonmail-bridge:latest
+    restart: unless-stopped
+    ports:
+      - "1143:143"   # IMAP (STARTTLS)
+      - "1025:25"    # SMTP (STARTTLS)
+    volumes:
+      - /var/app-data/proton-bridge:/root
+    environment:
+      TZ: Australia/Melbourne
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/143"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+      start_period: 30s
