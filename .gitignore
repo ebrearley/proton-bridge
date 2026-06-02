@@ -1,7 +1,20 @@
-# Proton Bridge state lives in /var/app-data/proton-bridge (outside this repo).
-# These are defensive ignores in case anything sensitive lands here locally.
+# Proton Bridge state must not be committed.
 data/
 *.env
 .env
 *.log
 *.tmp
+
+# Local build and UI output.
+node_modules/
+.next/
+out/
+dist/
+coverage/
+
+# Python caches.
+__pycache__/
+*.py[cod]
+
+# Docker/local override files.
+docker-compose.override.yml
