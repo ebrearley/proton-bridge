@@ -1,65 +1,191 @@
-import Image from "next/image";
+import { AlertCircle, CheckCircle2, Server, Terminal } from "lucide-react";
 
-export default function Home() {
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { getBridgeStatus, type BridgeStatus } from "@/lib/bridge";
+
+type StatusResult =
+  | { ok: true; status: BridgeStatus }
+  | { ok: false; error: string };
+
+async function loadBridgeStatus(): Promise<StatusResult> {
+  try {
+    return { ok: true, status: await getBridgeStatus() };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Bridge status failed",
+    };
+  }
+}
+
+const connectionSettings = [
+  {
+    service: "IMAP",
+    port: "1143",
+    security: "STARTTLS",
+    purpose: "Incoming mail",
+  },
+  {
+    service: "SMTP",
+    port: "1025",
+    security: "STARTTLS",
+    purpose: "Outgoing mail",
+  },
+];
+
+export default async function Home() {
+  const result = await loadBridgeStatus();
+  const isRunning = result.ok && result.status.running;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <main className="flex-1 bg-muted/30">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+        <header className="flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">
+              Proton Bridge Control
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-normal">
+              Status Dashboard
+            </h1>
+          </div>
+          <Badge
+            variant={isRunning ? "default" : "destructive"}
+            className="h-7 gap-1.5 self-start px-3 text-sm sm:self-auto"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+            {isRunning ? (
+              <CheckCircle2 aria-hidden="true" />
+            ) : (
+              <AlertCircle aria-hidden="true" />
+            )}
+            {isRunning ? "Running" : "Stopped"}
+          </Badge>
+        </header>
+
+        {!result.ok ? (
+          <Alert variant="destructive">
+            <AlertCircle aria-hidden="true" />
+            <AlertTitle>Bridge status unavailable</AlertTitle>
+            <AlertDescription>
+              The dashboard could not reach the Bridge control API. Last error:{" "}
+              <span className="font-mono">{result.error}</span>
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        <section className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardHeader>
+              <CardTitle>Bridge Process</CardTitle>
+              <CardDescription>Runtime state from the control API.</CardDescription>
+              <CardAction>
+                <Server className="size-5 text-muted-foreground" aria-hidden="true" />
+              </CardAction>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid gap-3">
+                <div className="flex items-center justify-between gap-4">
+                  <dt className="text-muted-foreground">State</dt>
+                  <dd className="font-medium">
+                    {result.ok
+                      ? result.status.running
+                        ? "Running"
+                        : "Stopped"
+                      : "Unavailable"}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <dt className="text-muted-foreground">PID</dt>
+                  <dd className="font-mono">
+                    {result.ok ? result.status.pid ?? "Not assigned" : "Unknown"}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <dt className="text-muted-foreground">Version</dt>
+                  <dd className="font-mono">
+                    {result.ok ? result.status.version || "Unknown" : "Unknown"}
+                  </dd>
+                </div>
+              </dl>
+            </CardContent>
+          </Card>
+
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle>Mail Client Settings</CardTitle>
+              <CardDescription>
+                Configure mail clients against the local Bridge listeners.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Service</TableHead>
+                    <TableHead>Port</TableHead>
+                    <TableHead>Security</TableHead>
+                    <TableHead>Use</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {connectionSettings.map((setting) => (
+                    <TableRow key={setting.service}>
+                      <TableCell className="font-medium">
+                        {setting.service}
+                      </TableCell>
+                      <TableCell className="font-mono">{setting.port}</TableCell>
+                      <TableCell>{setting.security}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {setting.purpose}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </section>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>First Run</CardTitle>
+            <CardDescription>
+              Account setup will happen through the browser terminal.
+            </CardDescription>
+            <CardAction>
+              <Terminal
+                className="size-5 text-muted-foreground"
+                aria-hidden="true"
+              />
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+              After Task 7 is implemented, use the browser terminal to complete
+              the first Bridge login and account setup flow. This dashboard will
+              continue to show process status and local mail client connection
+              settings without displaying or requesting secrets.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    </main>
   );
 }
