@@ -1,0 +1,7 @@
+# Proton Bridge state lives in /var/app-data/proton-bridge (outside this repo).
+# These are defensive ignores in case anything sensitive lands here locally.
+data/
+*.env
+.env
+*.log
+*.tmp
