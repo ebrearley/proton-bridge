@@ -1,15 +1,14 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AttachAddon } from "@xterm/addon-attach";
+import { FitAddon } from "@xterm/addon-fit";
+import { Terminal as XTerm } from "@xterm/xterm";
 import { Circle, Play } from "lucide-react";
+import "@xterm/xterm/css/xterm.css";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { applyTerminalOutput, type TerminalOutput } from "@/lib/terminal-output";
 import { cn } from "@/lib/utils";
-
-const maxOutputLength = 100_000;
 
 type ConnectionState = "connecting" | "open" | "closed" | "error";
 
@@ -41,65 +40,101 @@ function statusLabel(state: ConnectionState) {
 }
 
 export function Terminal({ webSocketUrl }: TerminalProps) {
-  const [output, setOutput] = useState<TerminalOutput>({ text: "", cursor: 0 });
-  const [command, setCommand] = useState("");
   const [connectionState, setConnectionState] =
     useState<ConnectionState>("connecting");
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
-  const outputRef = useRef<HTMLPreElement | null>(null);
-  const decoder = useMemo(() => new TextDecoder(), []);
+  const terminalRef = useRef<XTerm | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+
+  const disposeSession = useCallback(() => {
+    resizeObserverRef.current?.disconnect();
+    resizeObserverRef.current = null;
+    const socket = socketRef.current;
+    const terminal = terminalRef.current;
+    socketRef.current = null;
+    terminalRef.current = null;
+    fitAddonRef.current = null;
+    socket?.close();
+    terminal?.dispose();
+  }, []);
 
   const connect = useCallback(() => {
-    socketRef.current?.close();
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+
+    disposeSession();
+    setConnectionState("connecting");
+
+    const terminal = new XTerm({
+      convertEol: true,
+      cursorBlink: true,
+      fontFamily:
+        "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      fontSize: 14,
+      lineHeight: 1.4,
+      scrollback: 5000,
+      theme: {
+        background: "#09090b",
+        foreground: "#f4f4f5",
+        cursor: "#f4f4f5",
+        selectionBackground: "#3f3f46",
+      },
+    });
+    const fitAddon = new FitAddon();
+    terminal.loadAddon(fitAddon);
+    terminal.open(container);
+    terminal.writeln("Connecting to Bridge CLI...");
+    fitAddon.fit();
+    terminal.focus();
+
     const socket = new WebSocket(webSocketUrl ?? defaultTerminalUrl());
     socket.binaryType = "arraybuffer";
     socketRef.current = socket;
+    terminalRef.current = terminal;
+    fitAddonRef.current = fitAddon;
 
     socket.addEventListener("open", () => {
+      terminal.clear();
+      terminal.loadAddon(new AttachAddon(socket));
       setConnectionState("open");
-    });
-
-    socket.addEventListener("message", (event) => {
-      const chunk =
-        typeof event.data === "string"
-          ? event.data
-          : decoder.decode(event.data);
-
-      setOutput((current) => applyTerminalOutput(current, chunk, maxOutputLength));
+      terminal.focus();
     });
 
     socket.addEventListener("close", () => {
+      if (socketRef.current !== socket) {
+        return;
+      }
       setConnectionState("closed");
       socketRef.current = null;
+      terminal.writeln("");
+      terminal.writeln("[Bridge CLI session closed]");
     });
 
     socket.addEventListener("error", () => {
+      if (socketRef.current !== socket) {
+        return;
+      }
       setConnectionState("error");
+      terminal.writeln("");
+      terminal.writeln("[Bridge CLI connection error]");
     });
-  }, [decoder, webSocketUrl]);
+
+    const resizeObserver = new ResizeObserver(() => {
+      fitAddon.fit();
+    });
+    resizeObserver.observe(container);
+    resizeObserverRef.current = resizeObserver;
+  }, [disposeSession, webSocketUrl]);
 
   useEffect(() => {
     connect();
 
-    return () => {
-      socketRef.current?.close();
-      socketRef.current = null;
-    };
-  }, [connect]);
-
-  useEffect(() => {
-    outputRef.current?.scrollIntoView({ block: "end" });
-  }, [output.text]);
-
-  const sendCommand = (event?: FormEvent<HTMLFormElement>) => {
-    event?.preventDefault();
-    const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN || command.length === 0) {
-      return;
-    }
-    socket.send(`${command}\n`);
-    setCommand("");
-  };
+    return disposeSession;
+  }, [connect, disposeSession]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -120,7 +155,6 @@ export function Terminal({ webSocketUrl }: TerminalProps) {
           variant="outline"
           size="sm"
           onClick={() => {
-            setConnectionState("connecting");
             connect();
           }}
           disabled={connectionState === "open" || connectionState === "connecting"}
@@ -130,25 +164,12 @@ export function Terminal({ webSocketUrl }: TerminalProps) {
         </Button>
       </div>
 
-      <ScrollArea className="h-[28rem] rounded-lg border bg-zinc-950 text-zinc-50">
-        <pre className="min-h-full whitespace-pre-wrap break-words p-4 font-mono text-sm leading-6">
-          {output.text || "Waiting for Bridge CLI output..."}
-          <span ref={outputRef} />
-        </pre>
-      </ScrollArea>
-
-      <form className="flex gap-2" onSubmit={sendCommand}>
-        <Input
-          autoComplete="off"
-          autoCapitalize="none"
-          spellCheck={false}
-          value={command}
-          onChange={(event) => setCommand(event.target.value)}
-          placeholder="Type a command and press Enter"
-          className="font-mono"
-          disabled={connectionState !== "open"}
-        />
-      </form>
+      <div
+        ref={containerRef}
+        aria-label="Bridge CLI terminal"
+        className="h-[28rem] overflow-hidden rounded-lg border bg-zinc-950 p-3"
+        onClick={() => terminalRef.current?.focus()}
+      />
     </div>
   );
 }
