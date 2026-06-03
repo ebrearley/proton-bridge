@@ -6,10 +6,11 @@ EXPECTED_DEB_VERSION="$(tr -d '[:space:]' < VERSION)"
 EXPECTED_APP_VERSION="${EXPECTED_DEB_VERSION%%-*}"
 CONTAINER="proton-bridge-smoke"
 STATUS_FILE="$(mktemp "${TMPDIR:-/tmp}/proton-bridge-status.XXXXXX.json")"
+TERMINAL_FILE="$(mktemp "${TMPDIR:-/tmp}/proton-bridge-terminal.XXXXXX.log")"
 
 cleanup() {
   docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-  rm -f "$STATUS_FILE"
+  rm -f "$STATUS_FILE" "$TERMINAL_FILE"
 }
 trap cleanup EXIT
 
@@ -47,3 +48,52 @@ if status.get("version") != expected_version:
 PY
 
 echo "Smoke test passed for $IMAGE"
+
+if ! node - "$TERMINAL_FILE" <<'JS'
+const fs = require("node:fs");
+const outputPath = process.argv[2];
+const ws = new WebSocket("ws://127.0.0.1:18081/api/terminal");
+let output = "";
+const done = (code) => {
+  fs.writeFileSync(outputPath, output);
+  try {
+    ws.close();
+  } catch {
+  }
+  process.exit(code);
+};
+
+const timer = setTimeout(() => done(2), 8000);
+ws.addEventListener("message", async (event) => {
+  if (typeof event.data === "string") {
+    output += event.data;
+  } else if (event.data instanceof Blob) {
+    output += await event.data.text();
+  } else {
+    output += Buffer.from(event.data).toString("utf8");
+  }
+  if (output.includes("not able to detect a supported password manager")) {
+    clearTimeout(timer);
+    done(1);
+  }
+  if (output.includes(">>>") || output.includes("Proton Mail Bridge interactive shell")) {
+    clearTimeout(timer);
+    done(0);
+  }
+});
+ws.addEventListener("error", () => {
+  clearTimeout(timer);
+  done(3);
+});
+JS
+then
+  cat "$TERMINAL_FILE" >&2
+  exit 1
+fi
+
+if grep -q "not able to detect a supported password manager" "$TERMINAL_FILE"; then
+  cat "$TERMINAL_FILE" >&2
+  exit 1
+fi
+
+echo "Terminal smoke test passed for $IMAGE"
