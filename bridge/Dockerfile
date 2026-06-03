@@ -29,7 +29,7 @@ FROM debian:${DEBIAN_VERSION} AS runtime
 ARG BRIDGE_DEB_VERSION
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl gnupg pass python3 python3-pip tini \
+  && apt-get install -y --no-install-recommends ca-certificates curl gnupg pass python3 python3-pip socat tini \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=verifier /tmp/proton-bridge/protonmail-bridge.deb /tmp/protonmail-bridge.deb
@@ -56,6 +56,10 @@ ENV BRIDGE_BIN=/usr/lib/protonmail/bridge/bridge
 ENV BRIDGE_ARGS=--noninteractive
 ENV BRIDGE_CONTROL_HOST=0.0.0.0
 ENV BRIDGE_CONTROL_PORT=8081
+ENV BRIDGE_IMAP_FORWARD_LISTEN=0.0.0.0:143
+ENV BRIDGE_IMAP_FORWARD_TARGET=127.0.0.1:1143
+ENV BRIDGE_SMTP_FORWARD_LISTEN=0.0.0.0:25
+ENV BRIDGE_SMTP_FORWARD_TARGET=127.0.0.1:1025
 
 USER bridge
 VOLUME ["/data"]
