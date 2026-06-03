@@ -4,8 +4,8 @@ services:
     image: ericbrearley/proton-bridge:dev
     restart: unless-stopped
     ports:
-      - "1143:143"
-      - "1025:25"
+      - "${PROTON_BRIDGE_IMAP_PORT:-1143}:143"
+      - "${PROTON_BRIDGE_SMTP_PORT:-1025}:25"
     volumes:
       - proton_bridge_data:/data
     healthcheck:
@@ -23,9 +23,9 @@ services:
       dockerfile: bridge-ui/Dockerfile
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${PROTON_BRIDGE_UI_PORT:-3000}:3000"
     environment:
-      BRIDGE_CONTROL_URL: http://proton-bridge:8081
+      BRIDGE_CONTROL_URL: ${BRIDGE_CONTROL_URL:-http://proton-bridge:8081}
     depends_on:
       proton-bridge:
         condition: service_healthy
