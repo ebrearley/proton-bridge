@@ -2,6 +2,11 @@ services:
   proton-bridge:
     container_name: proton-bridge
     image: ericbrearley/proton-bridge:dev
+    build:
+      context: .
+      dockerfile: bridge/Dockerfile
+      args:
+        BRIDGE_DEB_VERSION: ${BRIDGE_DEB_VERSION:-3.23.1-1}
     restart: unless-stopped
     ports:
       - "${PROTON_BRIDGE_IMAP_PORT:-1143}:143"

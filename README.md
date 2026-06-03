@@ -12,11 +12,10 @@ Images are intentionally version-tagged. Do not publish or deploy `latest`.
 
 ## Getting Started
 
-Build the local development images and start the stack:
+Build and start the stack:
 
 ```bash
-./bridge/scripts/build-dev.sh
-docker compose up -d
+docker compose up -d --build
 ```
 
 Open the UI:
