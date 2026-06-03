@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-ARG DEBIAN_VERSION=bookworm-slim
+ARG DEBIAN_VERSION=trixie-slim
 ARG BRIDGE_DEB_VERSION=3.23.1-1
 
 FROM debian:${DEBIAN_VERSION} AS verifier
