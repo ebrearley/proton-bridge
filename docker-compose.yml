@@ -1,20 +1,34 @@
 services:
-  protonmail-bridge:
-    container_name: protonmail-bridge
-    image: shenxn/protonmail-bridge:latest
+  proton-bridge:
+    container_name: proton-bridge
+    image: ericbrearley/proton-bridge:dev
     restart: unless-stopped
     ports:
-      - "1143:143"   # IMAP (STARTTLS)
-      - "1025:25"    # SMTP (STARTTLS)
+      - "1143:143"
+      - "1025:25"
     volumes:
-      - /var/app-data/proton-bridge:/root
-    environment:
-      TZ: Australia/Melbourne
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
+      - proton_bridge_data:/data
     healthcheck:
-      test: ["CMD", "bash", "-c", "echo > /dev/tcp/127.0.0.1/143"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/api/status"]
       interval: 1m
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  proton-bridge-ui:
+    container_name: proton-bridge-ui
+    image: ericbrearley/proton-bridge-ui:dev
+    build:
+      context: .
+      dockerfile: bridge-ui/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      BRIDGE_CONTROL_URL: http://proton-bridge:8081
+    depends_on:
+      proton-bridge:
+        condition: service_healthy
+
+volumes:
+  proton_bridge_data:
