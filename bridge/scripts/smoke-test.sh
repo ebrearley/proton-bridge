@@ -15,7 +15,7 @@ cleanup() {
 trap cleanup EXIT
 
 cleanup
-docker run -d --name "$CONTAINER" -p 18081:8081 "$IMAGE" >/dev/null
+docker run -d --name "$CONTAINER" -p 18025:25 -p 18143:143 -p 18081:8081 "$IMAGE" >/dev/null
 
 ready=false
 for _ in $(seq 1 30); do
@@ -48,6 +48,23 @@ if status.get("version") != expected_version:
 PY
 
 echo "Smoke test passed for $IMAGE"
+
+python3 - <<'PY'
+import socket
+import time
+
+for name, port in (("SMTP", 18025), ("IMAP", 18143)):
+    deadline = time.monotonic() + 20
+    while True:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=2):
+                break
+        except OSError:
+            if time.monotonic() >= deadline:
+                raise SystemExit(f"{name} forwarder did not accept connections on {port}")
+            time.sleep(1)
+    print(f"{name} forwarder accepted connections on {port}")
+PY
 
 if ! node - "$TERMINAL_FILE" <<'JS'
 const fs = require("node:fs");

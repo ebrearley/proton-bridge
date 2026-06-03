@@ -21,8 +21,13 @@ BRIDGE_CLI_BIN = os.environ.get("BRIDGE_CLI_BIN", BRIDGE_BIN)
 BRIDGE_CLI_ARGS = shlex.split(os.environ.get("BRIDGE_CLI_ARGS", "-c"))
 CONTROL_HOST = os.environ.get("BRIDGE_CONTROL_HOST", "0.0.0.0")
 CONTROL_PORT = int(os.environ.get("BRIDGE_CONTROL_PORT", "8081"))
+IMAP_FORWARD_LISTEN = os.environ.get("BRIDGE_IMAP_FORWARD_LISTEN", "0.0.0.0:143")
+IMAP_FORWARD_TARGET = os.environ.get("BRIDGE_IMAP_FORWARD_TARGET", "127.0.0.1:1143")
+SMTP_FORWARD_LISTEN = os.environ.get("BRIDGE_SMTP_FORWARD_LISTEN", "0.0.0.0:25")
+SMTP_FORWARD_TARGET = os.environ.get("BRIDGE_SMTP_FORWARD_TARGET", "127.0.0.1:1025")
 
 bridge_process: subprocess.Popen[bytes] | None = None
+forwarder_processes: list[subprocess.Popen[bytes]] = []
 terminal_lock = asyncio.Lock()
 
 
@@ -51,15 +56,60 @@ def bridge_cli_command() -> list[str]:
     return [BRIDGE_CLI_BIN, *BRIDGE_CLI_ARGS]
 
 
+def split_host_port(value: str) -> tuple[str, int]:
+    host, separator, port = value.rpartition(":")
+    if not separator or not host or not port:
+        raise ValueError(f"Expected host:port, got {value!r}")
+    return host, int(port)
+
+
+def socat_command(listen: str, target: str) -> list[str]:
+    listen_host, listen_port = split_host_port(listen)
+    target_host, target_port = split_host_port(target)
+    return [
+        "socat",
+        f"TCP-LISTEN:{listen_port},bind={listen_host},fork,reuseaddr",
+        f"TCP:{target_host}:{target_port}",
+    ]
+
+
+def start_forwarders() -> None:
+    global forwarder_processes
+    if forwarder_processes and all(process.poll() is None for process in forwarder_processes):
+        return
+    stop_forwarders()
+    forwarder_processes = [
+        subprocess.Popen(socat_command(IMAP_FORWARD_LISTEN, IMAP_FORWARD_TARGET)),
+        subprocess.Popen(socat_command(SMTP_FORWARD_LISTEN, SMTP_FORWARD_TARGET)),
+    ]
+
+
+def stop_forwarders() -> None:
+    global forwarder_processes
+    for process in forwarder_processes:
+        if process.poll() is None:
+            process.send_signal(signal.SIGTERM)
+    for process in forwarder_processes:
+        if process.poll() is None:
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+    forwarder_processes = []
+
+
 def start_bridge() -> None:
     global bridge_process
     if bridge_process and bridge_process.poll() is None:
         return
     bridge_process = subprocess.Popen([BRIDGE_BIN, *BRIDGE_ARGS])
+    start_forwarders()
 
 
 def stop_bridge() -> None:
     global bridge_process
+    stop_forwarders()
     if not bridge_process or bridge_process.poll() is not None:
         return
     bridge_process.send_signal(signal.SIGTERM)
