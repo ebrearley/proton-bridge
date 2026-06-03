@@ -6,6 +6,7 @@ import { Circle, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { applyTerminalOutput, type TerminalOutput } from "@/lib/terminal-output";
 import { cn } from "@/lib/utils";
 
 const maxOutputLength = 100_000;
@@ -40,7 +41,7 @@ function statusLabel(state: ConnectionState) {
 }
 
 export function Terminal({ webSocketUrl }: TerminalProps) {
-  const [output, setOutput] = useState("");
+  const [output, setOutput] = useState<TerminalOutput>({ text: "", cursor: 0 });
   const [command, setCommand] = useState("");
   const [connectionState, setConnectionState] =
     useState<ConnectionState>("connecting");
@@ -64,9 +65,7 @@ export function Terminal({ webSocketUrl }: TerminalProps) {
           ? event.data
           : decoder.decode(event.data);
 
-      setOutput((current) =>
-        `${current}${chunk}`.slice(-maxOutputLength)
-      );
+      setOutput((current) => applyTerminalOutput(current, chunk, maxOutputLength));
     });
 
     socket.addEventListener("close", () => {
@@ -90,7 +89,7 @@ export function Terminal({ webSocketUrl }: TerminalProps) {
 
   useEffect(() => {
     outputRef.current?.scrollIntoView({ block: "end" });
-  }, [output]);
+  }, [output.text]);
 
   const sendCommand = (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
@@ -133,7 +132,7 @@ export function Terminal({ webSocketUrl }: TerminalProps) {
 
       <ScrollArea className="h-[28rem] rounded-lg border bg-zinc-950 text-zinc-50">
         <pre className="min-h-full whitespace-pre-wrap break-words p-4 font-mono text-sm leading-6">
-          {output || "Waiting for Bridge CLI output..."}
+          {output.text || "Waiting for Bridge CLI output..."}
           <span ref={outputRef} />
         </pre>
       </ScrollArea>
