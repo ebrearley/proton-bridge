@@ -5,16 +5,20 @@ IMAGE="${1:-ericbrearley/proton-bridge:dev}"
 EXPECTED_DEB_VERSION="$(tr -d '[:space:]' < VERSION)"
 EXPECTED_APP_VERSION="${EXPECTED_DEB_VERSION%%-*}"
 CONTAINER="proton-bridge-smoke"
+TLS_CONTAINER="proton-bridge-smoke-tls"
 STATUS_FILE="$(mktemp "${TMPDIR:-/tmp}/proton-bridge-status.XXXXXX.json")"
 TERMINAL_FILE="$(mktemp "${TMPDIR:-/tmp}/proton-bridge-terminal.XXXXXX.log")"
+TLS_CERT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/proton-bridge-tls.XXXXXX")"
 
 cleanup() {
-  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  docker rm -f "$CONTAINER" "$TLS_CONTAINER" >/dev/null 2>&1 || true
   rm -f "$STATUS_FILE" "$TERMINAL_FILE"
+  rm -rf "$TLS_CERT_DIR"
 }
 trap cleanup EXIT
 
 cleanup
+mkdir -p "$TLS_CERT_DIR"
 docker run -d --name "$CONTAINER" -p 18025:25 -p 18143:143 -p 18081:8081 "$IMAGE" >/dev/null
 
 ready=false
@@ -114,3 +118,66 @@ if grep -q "not able to detect a supported password manager" "$TERMINAL_FILE"; t
 fi
 
 echo "Terminal smoke test passed for $IMAGE"
+
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+  -keyout "$TLS_CERT_DIR/ca.key" \
+  -out "$TLS_CERT_DIR/ca.crt" \
+  -subj "/CN=Proton Bridge Smoke Test CA" >/dev/null 2>&1
+openssl req -newkey rsa:2048 -nodes \
+  -keyout "$TLS_CERT_DIR/privkey.pem" \
+  -out "$TLS_CERT_DIR/server.csr" \
+  -subj "/CN=mail.example.test" \
+  -addext "subjectAltName=DNS:mail.example.test" >/dev/null 2>&1
+openssl x509 -req \
+  -in "$TLS_CERT_DIR/server.csr" \
+  -CA "$TLS_CERT_DIR/ca.crt" \
+  -CAkey "$TLS_CERT_DIR/ca.key" \
+  -CAcreateserial \
+  -out "$TLS_CERT_DIR/cert.pem" \
+  -days 1 \
+  -sha256 \
+  -copy_extensions copy >/dev/null 2>&1
+cat "$TLS_CERT_DIR/cert.pem" "$TLS_CERT_DIR/ca.crt" >"$TLS_CERT_DIR/fullchain.pem"
+
+docker run -d --name "$TLS_CONTAINER" \
+  -p 19025:25 \
+  -p 19143:143 \
+  -p 19081:8081 \
+  -e BRIDGE_TLS_CERT_FILE=/certs/fullchain.pem \
+  -e BRIDGE_TLS_KEY_FILE=/certs/privkey.pem \
+  -v "$TLS_CERT_DIR:/certs:ro" \
+  "$IMAGE" >/dev/null
+
+ready=false
+for _ in $(seq 1 30); do
+  if curl -fsS http://127.0.0.1:19081/api/status >/dev/null; then
+    ready=true
+    break
+  fi
+  sleep 1
+done
+
+if [ "$ready" != true ]; then
+  docker logs "$TLS_CONTAINER" >&2 || true
+  exit 1
+fi
+
+sleep 5
+
+openssl s_client -starttls imap \
+  -connect 127.0.0.1:19143 \
+  -servername mail.example.test \
+  -verify_hostname mail.example.test \
+  -verify_return_error \
+  -CAfile "$TLS_CERT_DIR/ca.crt" \
+  -brief </dev/null >/dev/null
+
+openssl s_client -starttls smtp \
+  -connect 127.0.0.1:19025 \
+  -servername mail.example.test \
+  -verify_hostname mail.example.test \
+  -verify_return_error \
+  -CAfile "$TLS_CERT_DIR/ca.crt" \
+  -brief </dev/null >/dev/null
+
+echo "TLS smoke test passed for $IMAGE"

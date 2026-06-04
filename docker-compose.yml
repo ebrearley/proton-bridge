@@ -11,8 +11,12 @@ services:
     ports:
       - "${PROTON_BRIDGE_IMAP_PORT:-1143}:143"
       - "${PROTON_BRIDGE_SMTP_PORT:-1025}:25"
+    environment:
+      BRIDGE_TLS_CERT_FILE: ${BRIDGE_TLS_CERT_FILE:-}
+      BRIDGE_TLS_KEY_FILE: ${BRIDGE_TLS_KEY_FILE:-}
     volumes:
       - proton_bridge_data:/data
+      - ${PROTON_BRIDGE_TLS_CERTS_PATH:-proton_bridge_certs}:/certs:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/api/status"]
       interval: 1m
@@ -35,5 +39,43 @@ services:
       proton-bridge:
         condition: service_healthy
 
+  proton-bridge-acme-dns:
+    image: goacme/lego:v5.2.2
+    profiles: ["acme-dns"]
+    env_file:
+      - path: ${PROTON_BRIDGE_ACME_ENV_FILE:-.env.acme}
+        required: false
+    environment:
+      LEGO_PATH: /certs
+      LEGO_EMAIL: ${LETSENCRYPT_EMAIL:-}
+      LEGO_DOMAINS: ${PROTON_BRIDGE_TLS_DOMAIN:-}
+      LEGO_ACCEPT_TOS: ${LETSENCRYPT_ACCEPT_TOS:-true}
+      LEGO_SERVER: ${LETSENCRYPT_SERVER:-letsencrypt}
+      LEGO_DNS: ${PROTON_BRIDGE_ACME_DNS_PROVIDER:-}
+    volumes:
+      - ${PROTON_BRIDGE_TLS_CERTS_PATH:-proton_bridge_certs}:/certs
+    command: ["run"]
+
+  proton-bridge-acme-http:
+    image: goacme/lego:v5.2.2
+    profiles: ["acme-http"]
+    env_file:
+      - path: ${PROTON_BRIDGE_ACME_ENV_FILE:-.env.acme}
+        required: false
+    environment:
+      LEGO_PATH: /certs
+      LEGO_EMAIL: ${LETSENCRYPT_EMAIL:-}
+      LEGO_DOMAINS: ${PROTON_BRIDGE_TLS_DOMAIN:-}
+      LEGO_ACCEPT_TOS: ${LETSENCRYPT_ACCEPT_TOS:-true}
+      LEGO_SERVER: ${LETSENCRYPT_SERVER:-letsencrypt}
+      LEGO_HTTP: "true"
+      LEGO_HTTP_ADDRESS: ":80"
+    ports:
+      - "${PROTON_BRIDGE_ACME_HTTP_PORT:-80}:80"
+    volumes:
+      - ${PROTON_BRIDGE_TLS_CERTS_PATH:-proton_bridge_certs}:/certs
+    command: ["run"]
+
 volumes:
   proton_bridge_data:
+  proton_bridge_certs:
