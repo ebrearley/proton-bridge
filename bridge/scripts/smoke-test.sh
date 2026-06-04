@@ -124,7 +124,7 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
   -out "$TLS_CERT_DIR/ca.crt" \
   -subj "/CN=Proton Bridge Smoke Test CA" >/dev/null 2>&1
 openssl req -newkey rsa:2048 -nodes \
-  -keyout "$TLS_CERT_DIR/privkey.pem" \
+  -keyout "$TLS_CERT_DIR/mail.example.test.key" \
   -out "$TLS_CERT_DIR/server.csr" \
   -subj "/CN=mail.example.test" \
   -addext "subjectAltName=DNS:mail.example.test" >/dev/null 2>&1
@@ -133,18 +133,19 @@ openssl x509 -req \
   -CA "$TLS_CERT_DIR/ca.crt" \
   -CAkey "$TLS_CERT_DIR/ca.key" \
   -CAcreateserial \
-  -out "$TLS_CERT_DIR/cert.pem" \
+  -out "$TLS_CERT_DIR/mail.example.test.cert.pem" \
   -days 1 \
   -sha256 \
   -copy_extensions copy >/dev/null 2>&1
-cat "$TLS_CERT_DIR/cert.pem" "$TLS_CERT_DIR/ca.crt" >"$TLS_CERT_DIR/fullchain.pem"
+mkdir -p "$TLS_CERT_DIR/certificates"
+cat "$TLS_CERT_DIR/mail.example.test.cert.pem" "$TLS_CERT_DIR/ca.crt" >"$TLS_CERT_DIR/certificates/mail.example.test.crt"
+cp "$TLS_CERT_DIR/mail.example.test.key" "$TLS_CERT_DIR/certificates/mail.example.test.key"
 
 docker run -d --name "$TLS_CONTAINER" \
   -p 19025:25 \
   -p 19143:143 \
   -p 19081:8081 \
-  -e BRIDGE_TLS_CERT_FILE=/certs/fullchain.pem \
-  -e BRIDGE_TLS_KEY_FILE=/certs/privkey.pem \
+  -e PROTON_BRIDGE_TLS_DOMAIN=mail.example.test \
   -v "$TLS_CERT_DIR:/certs:ro" \
   "$IMAGE" >/dev/null
 
