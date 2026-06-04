@@ -1,7 +1,12 @@
 # Proton Bridge state must not be committed.
 data/
+certs/
 *.env
 .env
+.env.acme
+*.crt
+*.csr
+*.key
 *.log
 *.tmp
 

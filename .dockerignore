@@ -5,3 +5,7 @@
 **/.env
 **/.DS_Store
 **/__pycache__
+certs
+*.crt
+*.csr
+*.key

@@ -8,6 +8,7 @@ import signal
 import subprocess
 import select
 import shlex
+import time
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -25,6 +26,11 @@ IMAP_FORWARD_LISTEN = os.environ.get("BRIDGE_IMAP_FORWARD_LISTEN", "0.0.0.0:143"
 IMAP_FORWARD_TARGET = os.environ.get("BRIDGE_IMAP_FORWARD_TARGET", "127.0.0.1:1143")
 SMTP_FORWARD_LISTEN = os.environ.get("BRIDGE_SMTP_FORWARD_LISTEN", "0.0.0.0:25")
 SMTP_FORWARD_TARGET = os.environ.get("BRIDGE_SMTP_FORWARD_TARGET", "127.0.0.1:1025")
+TLS_CERT_FILE = os.environ.get("BRIDGE_TLS_CERT_FILE", "").strip()
+TLS_KEY_FILE = os.environ.get("BRIDGE_TLS_KEY_FILE", "").strip()
+STUNNEL_BIN = os.environ.get("BRIDGE_STUNNEL_BIN", "stunnel4")
+IMAP_TLS_BACKEND_LISTEN = os.environ.get("BRIDGE_IMAP_TLS_BACKEND_LISTEN", "127.0.0.1:10143")
+SMTP_TLS_BACKEND_LISTEN = os.environ.get("BRIDGE_SMTP_TLS_BACKEND_LISTEN", "127.0.0.1:10025")
 
 bridge_process: subprocess.Popen[bytes] | None = None
 forwarder_processes: list[subprocess.Popen[bytes]] = []
@@ -73,29 +79,107 @@ def socat_command(listen: str, target: str) -> list[str]:
     ]
 
 
+def tls_forwarding_configured() -> bool:
+    return bool(TLS_CERT_FILE or TLS_KEY_FILE)
+
+
+def validate_tls_forwarding_config() -> None:
+    if not TLS_CERT_FILE or not TLS_KEY_FILE:
+        raise RuntimeError("Both BRIDGE_TLS_CERT_FILE and BRIDGE_TLS_KEY_FILE must be set to enable TLS forwarding")
+    for path in (TLS_CERT_FILE, TLS_KEY_FILE):
+        if not os.path.isfile(path):
+            raise RuntimeError(f"TLS forwarding file does not exist: {path}")
+
+
+def stunnel_address(value: str) -> str:
+    host, port = split_host_port(value)
+    return f"{host}:{port}"
+
+
+def write_stunnel_config() -> str:
+    validate_tls_forwarding_config()
+    config = f"""foreground = yes
+syslog = no
+pid =
+debug = notice
+
+[imap-public]
+accept = {stunnel_address(IMAP_FORWARD_LISTEN)}
+connect = {stunnel_address(IMAP_TLS_BACKEND_LISTEN)}
+cert = {TLS_CERT_FILE}
+key = {TLS_KEY_FILE}
+protocol = imap
+
+[imap-bridge]
+client = yes
+accept = {stunnel_address(IMAP_TLS_BACKEND_LISTEN)}
+connect = {stunnel_address(IMAP_FORWARD_TARGET)}
+protocol = imap
+verifyChain = no
+
+[smtp-public]
+accept = {stunnel_address(SMTP_FORWARD_LISTEN)}
+connect = {stunnel_address(SMTP_TLS_BACKEND_LISTEN)}
+cert = {TLS_CERT_FILE}
+key = {TLS_KEY_FILE}
+protocol = smtp
+
+[smtp-bridge]
+client = yes
+accept = {stunnel_address(SMTP_TLS_BACKEND_LISTEN)}
+connect = {stunnel_address(SMTP_FORWARD_TARGET)}
+protocol = smtp
+verifyChain = no
+"""
+    config_path = "/tmp/proton-bridge-stunnel.conf"
+    with open(config_path, "w", encoding="utf-8") as handle:
+        handle.write(config)
+    return config_path
+
+
+def stunnel_command() -> list[str]:
+    return [STUNNEL_BIN, write_stunnel_config()]
+
+
+def ensure_forwarders_started() -> None:
+    time.sleep(0.2)
+    failed_processes = [process for process in forwarder_processes if process.poll() is not None]
+    if failed_processes:
+        codes = ", ".join(str(process.returncode) for process in failed_processes)
+        stop_forwarders()
+        raise RuntimeError(f"Mail forwarding process exited during startup with code(s): {codes}")
+
+
 def start_forwarders() -> None:
     global forwarder_processes
     if forwarder_processes and all(process.poll() is None for process in forwarder_processes):
         return
     stop_forwarders()
-    forwarder_processes = [
-        subprocess.Popen(socat_command(IMAP_FORWARD_LISTEN, IMAP_FORWARD_TARGET)),
-        subprocess.Popen(socat_command(SMTP_FORWARD_LISTEN, SMTP_FORWARD_TARGET)),
-    ]
+    if tls_forwarding_configured():
+        forwarder_processes = [subprocess.Popen(stunnel_command())]
+    else:
+        forwarder_processes = [
+            subprocess.Popen(socat_command(IMAP_FORWARD_LISTEN, IMAP_FORWARD_TARGET)),
+            subprocess.Popen(socat_command(SMTP_FORWARD_LISTEN, SMTP_FORWARD_TARGET)),
+        ]
+    ensure_forwarders_started()
+
+
+def terminate_process(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is None:
+        process.send_signal(signal.SIGTERM)
+    if process.poll() is None:
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
 
 
 def stop_forwarders() -> None:
     global forwarder_processes
     for process in forwarder_processes:
-        if process.poll() is None:
-            process.send_signal(signal.SIGTERM)
-    for process in forwarder_processes:
-        if process.poll() is None:
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
+        terminate_process(process)
     forwarder_processes = []
 
 

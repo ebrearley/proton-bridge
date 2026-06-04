@@ -29,7 +29,7 @@ FROM debian:${DEBIAN_VERSION} AS runtime
 ARG BRIDGE_DEB_VERSION
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl gnupg pass python3 python3-pip socat tini \
+  && apt-get install -y --no-install-recommends ca-certificates curl gnupg gosu pass python3 python3-pip socat stunnel4 tini \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=verifier /tmp/proton-bridge/protonmail-bridge.deb /tmp/protonmail-bridge.deb
@@ -60,8 +60,12 @@ ENV BRIDGE_IMAP_FORWARD_LISTEN=0.0.0.0:143
 ENV BRIDGE_IMAP_FORWARD_TARGET=127.0.0.1:1143
 ENV BRIDGE_SMTP_FORWARD_LISTEN=0.0.0.0:25
 ENV BRIDGE_SMTP_FORWARD_TARGET=127.0.0.1:1025
+ENV BRIDGE_TLS_CERT_FILE=
+ENV BRIDGE_TLS_KEY_FILE=
+ENV BRIDGE_STUNNEL_BIN=stunnel4
+ENV BRIDGE_IMAP_TLS_BACKEND_LISTEN=127.0.0.1:10143
+ENV BRIDGE_SMTP_TLS_BACKEND_LISTEN=127.0.0.1:10025
 
-USER bridge
 VOLUME ["/data"]
 EXPOSE 143 25 8081
 ENTRYPOINT ["/usr/bin/tini", "--", "/opt/proton-bridge/entrypoint.sh"]
