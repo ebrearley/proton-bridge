@@ -9,6 +9,11 @@ if [ "$(id -u)" = "0" ]; then
   mkdir -p "$HOME"
   chown -R bridge:bridge "$HOME"
 
+  if [ -z "${BRIDGE_TLS_CERT_FILE:-}" ] && [ -z "${BRIDGE_TLS_KEY_FILE:-}" ] && [ -n "${PROTON_BRIDGE_TLS_DOMAIN:-}" ]; then
+    export BRIDGE_TLS_CERT_FILE="/certs/certificates/${PROTON_BRIDGE_TLS_DOMAIN}.crt"
+    export BRIDGE_TLS_KEY_FILE="/certs/certificates/${PROTON_BRIDGE_TLS_DOMAIN}.key"
+  fi
+
   if [ -n "${BRIDGE_TLS_CERT_FILE:-}" ] || [ -n "${BRIDGE_TLS_KEY_FILE:-}" ]; then
     if [ -z "${BRIDGE_TLS_CERT_FILE:-}" ] || [ -z "${BRIDGE_TLS_KEY_FILE:-}" ]; then
       echo "ERROR: BRIDGE_TLS_CERT_FILE and BRIDGE_TLS_KEY_FILE must both be set for TLS" >&2

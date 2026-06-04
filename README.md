@@ -37,8 +37,9 @@ Proton Bridge uses a self-signed local STARTTLS certificate by default. That is
 fine for local-only use, but strict mail clients can reject it when connecting
 from another device.
 
-Trusted TLS is optional. Leave `BRIDGE_TLS_CERT_FILE` and
-`BRIDGE_TLS_KEY_FILE` blank to keep the default behavior.
+Trusted TLS is optional. Leave `PROTON_BRIDGE_TLS_DOMAIN`,
+`BRIDGE_TLS_CERT_FILE`, and `BRIDGE_TLS_KEY_FILE` blank to keep the default
+behavior.
 
 To use trusted TLS, clients must connect with a real public DNS name covered by
 the certificate, for example:
@@ -55,7 +56,8 @@ LAN IPs and `.local` hostnames cannot be registered with Let's Encrypt.
 
 If you already manage certificates with something like Caddy, Nginx Proxy
 Manager, Certbot, or a reverse proxy host, mount the certificate directory and
-point Bridge at the files:
+point Bridge at the files. Explicit `BRIDGE_TLS_CERT_FILE` and
+`BRIDGE_TLS_KEY_FILE` values override the inferred Let's Encrypt paths.
 
 ```env
 PROTON_BRIDGE_TLS_DOMAIN=mail.example.com
@@ -91,8 +93,15 @@ Configure `.env`:
 PROTON_BRIDGE_TLS_DOMAIN=mail.example.com
 LETSENCRYPT_EMAIL=you@example.com
 PROTON_BRIDGE_ACME_DNS_PROVIDER=cloudflare
-BRIDGE_TLS_CERT_FILE=/certs/certificates/mail.example.com.crt
-BRIDGE_TLS_KEY_FILE=/certs/certificates/mail.example.com.key
+```
+
+With `PROTON_BRIDGE_TLS_DOMAIN` set and `BRIDGE_TLS_CERT_FILE` /
+`BRIDGE_TLS_KEY_FILE` blank, the Bridge container automatically uses lego's
+standard output files:
+
+```text
+/certs/certificates/mail.example.com.crt
+/certs/certificates/mail.example.com.key
 ```
 
 Put DNS provider credentials in `.env.acme`. For Cloudflare:
