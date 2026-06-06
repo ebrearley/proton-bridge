@@ -26,6 +26,8 @@ IMAP_FORWARD_LISTEN = os.environ.get("BRIDGE_IMAP_FORWARD_LISTEN", "0.0.0.0:143"
 IMAP_FORWARD_TARGET = os.environ.get("BRIDGE_IMAP_FORWARD_TARGET", "127.0.0.1:1143")
 SMTP_FORWARD_LISTEN = os.environ.get("BRIDGE_SMTP_FORWARD_LISTEN", "0.0.0.0:25")
 SMTP_FORWARD_TARGET = os.environ.get("BRIDGE_SMTP_FORWARD_TARGET", "127.0.0.1:1025")
+PUBLISHED_IMAP_PORT = os.environ.get("PROTON_BRIDGE_IMAP_PORT", "1143").strip() or "1143"
+PUBLISHED_SMTP_PORT = os.environ.get("PROTON_BRIDGE_SMTP_PORT", "1025").strip() or "1025"
 TLS_CERT_FILE = os.environ.get("BRIDGE_TLS_CERT_FILE", "").strip()
 TLS_KEY_FILE = os.environ.get("BRIDGE_TLS_KEY_FILE", "").strip()
 STUNNEL_BIN = os.environ.get("BRIDGE_STUNNEL_BIN", "stunnel4")
@@ -41,6 +43,8 @@ class Status(BaseModel):
     running: bool
     pid: int | None
     version: str
+    imap_port: str
+    smtp_port: str
 
 
 def bridge_version() -> str:
@@ -281,6 +285,8 @@ async def status() -> Status:
         running=running,
         pid=bridge_process.pid if running and bridge_process else None,
         version=bridge_version(),
+        imap_port=PUBLISHED_IMAP_PORT,
+        smtp_port=PUBLISHED_SMTP_PORT,
     )
 
 

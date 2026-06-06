@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AlertCircle, CheckCircle2, Server, Terminal } from "lucide-react";
+import { connection } from "next/server";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -37,24 +38,41 @@ async function loadBridgeStatus(): Promise<StatusResult> {
   }
 }
 
-const connectionSettings = [
-  {
-    service: "IMAP",
-    port: "1143",
-    security: "STARTTLS",
-    purpose: "Incoming mail",
-  },
-  {
-    service: "SMTP",
-    port: "1025",
-    security: "STARTTLS",
-    purpose: "Outgoing mail",
-  },
-];
+function envPort(name: string, fallback: string) {
+  return process.env[name]?.trim() || fallback;
+}
+
+function mailClientSettings(imapPort: string, smtpPort: string) {
+  return [
+    {
+      service: "IMAP",
+      port: imapPort,
+      security: "STARTTLS",
+      purpose: "Incoming mail",
+    },
+    {
+      service: "SMTP",
+      port: smtpPort,
+      security: "STARTTLS",
+      purpose: "Outgoing mail",
+    },
+  ];
+}
 
 export default async function Home() {
+  await connection();
+
   const result = await loadBridgeStatus();
   const isRunning = result.ok && result.status.running;
+  const imapPort =
+    result.ok && result.status.imap_port
+      ? result.status.imap_port
+      : envPort("PROTON_BRIDGE_IMAP_PORT", "1143");
+  const smtpPort =
+    result.ok && result.status.smtp_port
+      ? result.status.smtp_port
+      : envPort("PROTON_BRIDGE_SMTP_PORT", "1025");
+  const settings = mailClientSettings(imapPort, smtpPort);
 
   return (
     <main className="flex-1 bg-muted/30">
@@ -147,7 +165,7 @@ export default async function Home() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {connectionSettings.map((setting) => (
+                  {settings.map((setting) => (
                     <TableRow key={setting.service}>
                       <TableCell className="font-medium">
                         {setting.service}

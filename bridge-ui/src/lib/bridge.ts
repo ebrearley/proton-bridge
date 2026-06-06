@@ -2,6 +2,8 @@ export type BridgeStatus = {
   running: boolean;
   pid: number | null;
   version: string;
+  imap_port?: string;
+  smtp_port?: string;
 };
 
 const bridgeBaseUrl =
