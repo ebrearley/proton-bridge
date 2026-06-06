@@ -19,7 +19,13 @@ trap cleanup EXIT
 
 cleanup
 mkdir -p "$TLS_CERT_DIR"
-docker run -d --name "$CONTAINER" -p 18025:25 -p 18143:143 -p 18081:8081 "$IMAGE" >/dev/null
+docker run -d --name "$CONTAINER" \
+  -p 18025:25 \
+  -p 18143:143 \
+  -p 18081:8081 \
+  -e PROTON_BRIDGE_IMAP_PORT=18143 \
+  -e PROTON_BRIDGE_SMTP_PORT=18025 \
+  "$IMAGE" >/dev/null
 
 ready=false
 for _ in $(seq 1 30); do
@@ -36,11 +42,11 @@ if [ "$ready" != true ]; then
 fi
 
 cat "$STATUS_FILE"
-python3 - "$STATUS_FILE" "$EXPECTED_APP_VERSION" <<'PY'
+python3 - "$STATUS_FILE" "$EXPECTED_APP_VERSION" 18143 18025 <<'PY'
 import json
 import sys
 
-status_path, expected = sys.argv[1], sys.argv[2]
+status_path, expected, expected_imap_port, expected_smtp_port = sys.argv[1:5]
 with open(status_path, encoding="utf-8") as handle:
     status = json.load(handle)
 expected_version = f"Proton Mail Bridge {expected}"
@@ -49,6 +55,10 @@ if status.get("running") is not True:
     raise SystemExit(f"Bridge is not running: {status}")
 if status.get("version") != expected_version:
     raise SystemExit(f"Expected {expected_version!r}, got {status.get('version')!r}")
+if status.get("imap_port") != expected_imap_port:
+    raise SystemExit(f"Expected IMAP port {expected_imap_port!r}, got {status.get('imap_port')!r}")
+if status.get("smtp_port") != expected_smtp_port:
+    raise SystemExit(f"Expected SMTP port {expected_smtp_port!r}, got {status.get('smtp_port')!r}")
 PY
 
 echo "Smoke test passed for $IMAGE"

@@ -19,6 +19,8 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV BRIDGE_CONTROL_URL=http://proton-bridge:8081
+ENV PROTON_BRIDGE_IMAP_PORT=1143
+ENV PROTON_BRIDGE_SMTP_PORT=1025
 COPY --from=builder --chown=node:node /app/public ./public
 RUN mkdir .next && chown node:node .next
 COPY --from=builder --chown=node:node /app/.next/standalone ./
