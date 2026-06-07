@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+import { ThemeScript } from "@/components/theme-script";
+
 export const metadata: Metadata = {
   title: "Proton Bridge",
   description: "Proton Bridge status dashboard",
@@ -12,8 +14,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
+      <body className="min-h-full flex flex-col">
+        <ThemeScript />
+        {children}
+      </body>
     </html>
   );
 }

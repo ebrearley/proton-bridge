@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { getBridgeStatus, type BridgeStatus } from "@/lib/bridge";
 
 type StatusResult =
@@ -86,17 +87,20 @@ export default async function Home() {
               Status Dashboard
             </h1>
           </div>
-          <Badge
-            variant={isRunning ? "default" : "destructive"}
-            className="h-7 gap-1.5 self-start px-3 text-sm sm:self-auto"
-          >
-            {isRunning ? (
-              <CheckCircle2 aria-hidden="true" />
-            ) : (
-              <AlertCircle aria-hidden="true" />
-            )}
-            {isRunning ? "Running" : "Stopped"}
-          </Badge>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <ThemeToggle />
+            <Badge
+              variant={isRunning ? "default" : "destructive"}
+              className="h-7 gap-1.5 px-3 text-sm"
+            >
+              {isRunning ? (
+                <CheckCircle2 aria-hidden="true" />
+              ) : (
+                <AlertCircle aria-hidden="true" />
+              )}
+              {isRunning ? "Running" : "Stopped"}
+            </Badge>
+          </div>
         </header>
 
         {!result.ok ? (
