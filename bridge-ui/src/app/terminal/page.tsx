@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, ShieldAlert, Terminal as TerminalIcon } from "lucide-react";
 
 import { Terminal } from "@/components/terminal";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,12 +41,15 @@ export default function TerminalPage() {
               Browser Terminal
             </h1>
           </div>
-          <Button asChild variant="outline">
-            <Link href="/">
-              <ArrowLeft aria-hidden="true" />
-              Dashboard
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <ThemeToggle />
+            <Button asChild variant="outline">
+              <Link href="/">
+                <ArrowLeft aria-hidden="true" />
+                Dashboard
+              </Link>
+            </Button>
+          </div>
         </header>
 
         <Alert variant="destructive">
